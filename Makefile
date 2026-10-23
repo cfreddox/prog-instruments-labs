@@ -1,3 +1,4 @@
+
 run:
 	python3 main.py -f data.txt -o output.txt
 
@@ -10,13 +11,10 @@ format:
 typecheck:
 	pyright .
 
-fullcheck:
-	ruff check .
-	pyright .
-	ruff format --check
+fullcheck: lint typecheck
 
 precommit:
 	pre-commit install --hook-type pre-commit --hook-type pre-push
 
 prepush:
-	pre-commit run --all-files
+	pre-commit run --hook-stage pre-push --all-files
