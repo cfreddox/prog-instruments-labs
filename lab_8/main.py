@@ -35,10 +35,14 @@ def read_urls(file_path: Path) -> list[str]:
 
 
 async def download_image(
-    session: aiohttp.ClientSession, url: str, output: Path, index: int
+    session: aiohttp.ClientSession,
+    url: str,
+    output: Path,
+    index: int,
+    semaphore: asyncio.Semaphore,
 ) -> None:
-    """Download an image and save it to the output directory."""
-    async with session.get(url) as response:
+    """Download an image within the concurrency limit."""
+    async with semaphore, session.get(url) as response:
         response.raise_for_status()
 
         if not response.content_type.startswith("image/"):
@@ -54,7 +58,7 @@ async def download_image(
 
 
 async def main() -> None:
-    """Read URLs and download images."""
+    """Read URLs and download images concurrently."""
     args = parse_args()
     urls = read_urls(args.file)
 
@@ -62,9 +66,14 @@ async def main() -> None:
 
     print(f"Found {len(urls)} image URLs")
 
+    semaphore = asyncio.Semaphore(args.concurrency)
+
     async with aiohttp.ClientSession() as session:
-        for index, url in enumerate(urls, start=1):
-            await download_image(session, url, args.output, index)
+        tasks = [
+            download_image(session, url, args.output, index, semaphore)
+            for index, url in enumerate(urls, start=1)
+        ]
+        await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":
