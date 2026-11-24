@@ -1,11 +1,14 @@
 import argparse
 import asyncio
 import csv
+import logging
 import mimetypes
 from pathlib import Path
 
 import aiofiles
 import aiohttp
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,8 +43,8 @@ async def download_image(
     output: Path,
     index: int,
     semaphore: asyncio.Semaphore,
-) -> None:
-    """Download an image within the concurrency limit."""
+) -> bool:
+    """Download an image and report whether it succeeded."""
     try:
         async with semaphore, session.get(url) as response:
             response.raise_for_status()
@@ -56,11 +59,15 @@ async def download_image(
             async with aiofiles.open(file_path, "wb") as file:
                 await file.write(data)
 
-            print(f"Downloaded {file_path.name}")
     except TimeoutError:
-        print(f"Failed to download {url}: request timed out.")
+        logger.error("Failed to download %s: request timed out.", url)
+        return False
     except (aiohttp.ClientError, OSError, ValueError) as error:
-        print(f"Failed to download {url}: {error}")
+        logger.error("Failed to download %s: %s", url, error)
+        return False
+
+    logger.info("Downloaded %s", file_path.name)
+    return True
 
 
 async def main() -> None:
@@ -71,9 +78,10 @@ async def main() -> None:
         urls = read_urls(args.file)
         args.output.mkdir(parents=True, exist_ok=True)
     except (OSError, ValueError, csv.Error) as error:
-        raise SystemExit(f"Error: {error}") from error
+        logger.error("%s", error)
+        raise SystemExit(1) from error
 
-    print(f"Found {len(urls)} image URLs")
+    logger.info("Found %d image URLs", len(urls))
 
     semaphore = asyncio.Semaphore(args.concurrency)
     timeout = aiohttp.ClientTimeout(total=30)
@@ -83,8 +91,20 @@ async def main() -> None:
             download_image(session, url, args.output, index, semaphore)
             for index, url in enumerate(urls, start=1)
         ]
-        await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks)
+
+    successful = sum(results)
+    failed = len(results) - successful
+    logger.info("Downloaded: %d, failed: %d", successful, failed)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler("app.log", encoding="utf-8"),
+            logging.StreamHandler(),
+        ],
+    )
     asyncio.run(main())
