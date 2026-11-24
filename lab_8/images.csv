@@ -1,5 +1,7 @@
 url
 https://httpbin.org/image/png
+https://httpbin.org/status/404
 https://httpbin.org/image/jpeg
+https://httpbin.org/html
+invalid-url
 https://httpbin.org/image/webp
-https://httpbin.org/image/svg
