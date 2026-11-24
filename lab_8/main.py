@@ -1,6 +1,11 @@
 import argparse
+import asyncio
 import csv
+import mimetypes
 from pathlib import Path
+
+import aiofiles
+import aiohttp
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,16 +34,38 @@ def read_urls(file_path: Path) -> list[str]:
         return [row["url"].strip() for row in reader if row["url"]]
 
 
-def main() -> None:
-    """Read input data and display image URLs."""
+async def download_image(
+    session: aiohttp.ClientSession, url: str, output: Path, index: int
+) -> None:
+    """Download an image and save it to the output directory."""
+    async with session.get(url) as response:
+        response.raise_for_status()
+
+        if not response.content_type.startswith("image/"):
+            raise ValueError("Response is not an image.")
+
+        extension = mimetypes.guess_extension(response.content_type) or ".img"
+        file_path = output / f"image_{index}{extension}"
+
+        async with aiofiles.open(file_path, "wb") as file:
+            await file.write(await response.read())
+
+        print(f"Downloaded {file_path.name}")
+
+
+async def main() -> None:
+    """Read URLs and download images."""
     args = parse_args()
     urls = read_urls(args.file)
 
+    args.output.mkdir(parents=True, exist_ok=True)
+
     print(f"Found {len(urls)} image URLs")
 
-    for url in urls:
-        print(url)
+    async with aiohttp.ClientSession() as session:
+        for index, url in enumerate(urls, start=1):
+            await download_image(session, url, args.output, index)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
